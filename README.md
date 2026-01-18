@@ -317,6 +317,47 @@ Outras Abas:
 
 Referências: `frontend/src/pages/IDEPage.tsx:92-97`, `frontend/src/pages/IDEPage.tsx:2194-2243`, `frontend/src/pages/IDEPage.tsx:2625-2705`, `frontend/src/pages/IDEPage.tsx:2845-2998`
 
+#### Fluxo de Dados e Geração (End-to-End)
+
+```
+ [Wizard]
+  CreateAppPage -> wizardRestrictions -> AppMapping (IA)
+        |                          |
+        |                          v
+        |                  ApprovedStructure
+        v
+  database.createProject (SQLite local)
+        |
+        v
+  Navega para CompilationPage
+        |
+        v
+  CompilationTerminal -> geminiService.generate(appConfig)
+        |            \
+        |             \-- (Opcional) Backend API
+        |                   ProjectController.compileProject
+        |                   -> ProjectService
+        |                   -> CodeGenerationService.generateCode
+        v
+  onComplete(code, files, logs)
+        |
+        v
+  database.createVersion + saveProjectFiles (versão 1)
+        |
+        v
+  Navega para IDEPage com projectId
+        |
+        v
+  Files/Editor/Preview (edição, inspeção e salvamento)
+```
+
+Referências:
+- Wizard: `frontend/src/pages/CreateAppPage.tsx:2361-2397`
+- Terminal: `frontend/src/components/features/CompilationTerminal.tsx:113-133`
+- Versionamento e arquivos: `frontend/src/pages/CompilationPage.tsx:36-190`
+- SQLite local: `frontend/src/services/database.ts:1-81, 551-585`
+- Backend (opcional): `backend/src/controllers/ProjectController.ts:176-200`, `backend/src/services/ProjectService.ts:84-115`, `backend/src/services/CodeGenerationService.ts:81-115, 178-200`
+
 
 ### Backend Architecture
 - **Layered Architecture** - Controllers, Services, Repositories
