@@ -135,6 +135,82 @@ pnpm dev
 - **Custom Hooks** - Reusable logic extraction
 - **Service Layer** - API communication abstraction
 
+## 🧭 Fluxo de Navegação
+
+- `Home` (`/`) - Página inicial com acesso rápido ao fluxo de criação.
+- `Projects` (`/projects`) - Lista e gerenciamento de projetos e versões.
+- `Create App` (`/create` ou `/create-app`) - Wizard completo de criação e configuração.
+- `Compilation` (`/compilation`) - Consolida geração de código e feedback do terminal.
+- `IDE` (`/ide` e `/ide/:projectId/:versionId`) - Edição, visualização e gerenciamento de arquivos gerados.
+- `Settings` (`/settings`) - Preferências e integrações (IA, APIs, etc.).
+
+## 📄 Páginas
+
+- `HomePage` - Introdução e CTA para iniciar o wizard.
+- `ProjectsPage` - Lista de projetos, versões, abertura no IDE, exclusão e duplicação.
+- `CreateAppPage` - Wizard interativo com IA e validações contextuais.
+- `CompilationPage` - Terminal de build e logs de geração.
+- `IDEPage` - Ambiente de desenvolvimento com abas (preview, editor, etc.).
+- `SettingsPage` - Configurações globais de projeto e serviços.
+
+## 🧙 Wizard de Criação
+
+O wizard organiza a criação em etapas claras com IA auxiliar e validações:
+
+- Etapa 1: `Informações Básicas` — nome e descrição do app.
+- Etapa 2: `Aprimoramento de Descrição` — IA melhora a descrição e sugere ajustes.
+- Etapa 3: `Escolha de Configuração` — padrão, personalizar ou IA criativa.
+- Etapa 4: `Tipo de Aplicação` — ex.: `web-spa`, `pwa`, `ecommerce`, `dashboard`.
+- Etapa 5: `Stack Frontend + Framework CSS` — escolha de `react`, `vue`, `nextjs` e `tailwind`, `bootstrap`, etc.
+- Etapa 6: `Tema de Cores + Fonte` — seleção de temas e tipografia.
+- Etapa 7: `Estilo de Layout` — `modern`, `minimal`, `material`, `flat`, etc.
+- Etapa 8: `Navegação` — estrutura de navegação e padrões de UX.
+- Etapa 9: `Estrutura de Menu` — header/footer, sidebar, hamburger, dashboard.
+- Etapa 10: `Funcionalidades` — ativar `autenticação`, `banco de dados`, `pagamentos`.
+- Etapa 11: `Integrações` — mapeamento de integrações conforme contexto e descrição.
+- Etapa 12: `Mapeamento de Recursos` — IA organiza páginas, recursos, fluxos e menus.
+- Etapa 13: `Geração de Banco de Dados` — criação/visualização de schema e entidades.
+- Etapa 14: `Revisão das Configurações` — resumo e aprovação final.
+
+### Validações e Restrições
+
+- Sistema de restrições do wizard alinha escolhas com a categoria de aplicação.
+- Regras de combinação para `frontend`, `css`, `layout`, `menu`, `navigation`, `themes`.
+- Métricas por tipo (ex.: limite de bundle, metas de performance e Lighthouse).
+
+### IA e Aprovações
+
+- `Aprimoramento de Descrição` e `Prompt Enhance` refinam pedidos para geração robusta.
+- `App Mapping` cria estrutura aprovada: páginas, recursos, fluxos, navegação e elementos.
+- Seções de aprovação auxiliam validação e ajuste antes da compilação.
+
+## 🧰 IDE e Abas
+
+A IDE centraliza edição, preview e gestão de artefatos gerados com múltiplas abas:
+
+- `Preview` — visualização responsiva (desktop/tablet/mobile), zoom e modo de inspeção.
+- `Canvas` — fluxo visual do canvas e composição de elementos.
+- `Files` — árvore de arquivos gerados com seleção e edição.
+- `Editor` — Monaco Editor com recursos avançados (minimap, folding, formatação, atalhos).
+- `Agentes` — agentes de código (geração, refatoração, debug e teste).
+- `Dados` — visão de dados, schema e entidades (quando habilitado).
+- `Memoria` — contexto de trabalho e histórico para auxiliar a IA.
+- `Integrações` — gerenciamento de integrações de serviços.
+- `Notas` — notas e documentação auxiliar do projeto.
+- `Documentacao` — referência e artefatos gerados de documentação.
+- `Tarefas` — acompanhamento de atividades e roadmap.
+- `Dashboard` — visão geral de status do projeto.
+- `Roadmap` — planejamento e marcos.
+- `Diagramas` — diagramas técnicos e de fluxo.
+
+### Funcionalidades de Destaque na IDE
+
+- Inspeção de elementos no `Preview` com overlay e captura de metadados.
+- Edição com Monaco carregado sob demanda (`lazy`) para performance.
+- Atualização automática de arquivos e salvamento em banco local (SQLite).
+- Download de projeto gerado em ZIP com README.
+
+
 ### Backend Architecture
 - **Layered Architecture** - Controllers, Services, Repositories
 - **Database Layer** - SQLite with better-sqlite3
