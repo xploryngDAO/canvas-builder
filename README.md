@@ -1,5 +1,9 @@
 # Canvas App Creator
 
+Atualizado em: 18/01/2026
+
+Este README inclui diagramas e detalhes completos dos fluxos de navegação, páginas, etapas do wizard, abas da IDE, recursos, funcionalidades e configuração.
+
 > Full-stack application for creating canvas-based apps with React frontend and Express backend
 
 ## 🚀 Quick Start
