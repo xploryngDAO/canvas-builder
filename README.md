@@ -380,6 +380,31 @@ DATABASE_PATH=./database.db
 - Frontend: **3010** (configured in vite.config.ts)
 - Backend: **8010** (configured in .env and index.ts)
 
+### Configurações e IA
+
+- `Settings` (`/settings`) gerencia preferências e integrações.
+- Chave da IA (Gemini) é armazenada no banco local via `settingsService`.
+- Geração de código usa `geminiService` com retry, timeouts e verificação de quota.
+
+Referências:
+- Configurações: `frontend/src/pages/SettingsPage.tsx:200-227`
+- Serviço de configurações: `frontend/src/services/settingsService.ts:1-27`
+- Serviço de IA (init/reload): `frontend/src/services/gemini.ts:52-122`
+- Serviço de IA (generate): `frontend/src/services/gemini.ts:139-200`
+
+## 🗄️ Persistência Local
+
+- Banco local em `sql.js` persistido em `localStorage`.
+- Tabelas principais: `projects`, `versions`, `files`, `settings`.
+- Canvas e fluxo visual: `canvas_state`, `canvas_nodes`, `canvas_connections`.
+- Exportação e salvamento automático ao alterar dados.
+
+Referências:
+- Inicialização: `frontend/src/services/database.ts:1-81`
+- Salvar no localStorage: `frontend/src/services/database.ts:223-233`
+- Tabelas de Canvas: `frontend/src/services/database.ts:177-190`
+- Salvamento de arquivos: `frontend/src/services/database.ts:551-585`
+
 ## 📦 Dependencies
 
 ### Frontend
