@@ -4,6 +4,34 @@ Atualizado em: 18/01/2026
 
 Este README inclui diagramas e detalhes completos dos fluxos de navegação, páginas, etapas do wizard, abas da IDE, recursos, funcionalidades e configuração.
 
+## Índice
+
+- [Quick Start](#quick-start)
+- [Project Structure](#project-structure)
+- [Development](#development)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Fluxo de Navegação](#fluxo-de-navegação)
+- [Páginas](#páginas)
+- [Wizard de Criação](#wizard-de-criação)
+- [IDE e Abas](#ide-e-abas)
+- [Funcionalidades de Destaque na IDE](#funcionalidades-de-destaque-na-ide)
+- [Diagramas](#diagramas)
+  - [Fluxo de Navegação](#fluxo-de-navegação-1)
+  - [Wizard de Criação (Etapas)](#wizard-de-criação-etapas)
+  - [IDE: Abas e Interações](#ide-abas-e-interações)
+  - [Fluxo de Dados e Geração (End-to-End)](#fluxo-de-dados-e-geração-end-to-end)
+- [Configuration](#configuration)
+- [Persistência Local](#persistência-local)
+- [Dependencies](#dependencies)
+- [Deployment](#deployment)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgments](#acknowledgments)
+- [Performance e Build](#performance-e-build)
+  - [Verificações](#verificações)
+
 > Full-stack application for creating canvas-based apps with React frontend and Express backend
 
 ## 🚀 Quick Start
