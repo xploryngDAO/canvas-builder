@@ -210,6 +210,113 @@ A IDE centraliza edição, preview e gestão de artefatos gerados com múltiplas
 - Atualização automática de arquivos e salvamento em banco local (SQLite).
 - Download de projeto gerado em ZIP com README.
 
+### Diagramas
+
+#### Fluxo de Navegação
+
+```
+           +------------------+
+           |      Home        |
+           +------------------+
+             |            \
+             |             \--> +------------------+
+             v                   |    Projects     |
+   +------------------+          +------------------+
+   |   Create App     |                 |
+   +------------------+                 v
+             |                       +------------------+
+             v                       |       IDE        |
+   +------------------+              +------------------+
+   |   Compilation    |                      ^
+   +------------------+                      |
+             |                               |
+             v                               |
+   +------------------+                      |
+   |       IDE        | <--------------------+
+   +------------------+
+             \
+              \--> +------------------+
+                   |     Settings     |
+                   +------------------+
+```
+
+Rotas: `frontend/src/components/AnimatedRoutes.tsx:16-79`
+
+#### Wizard de Criação (Etapas)
+
+```
+[1] Informações Básicas
+  |
+[2] Aprimoramento de Descrição (IA)
+  |
+[3] Escolha de Configuração
+  |-- Padrão
+  |-- Personalizar
+  |-- IA Criativa
+  v
+[4] Tipo de Aplicação
+  |
+[5] Stack Frontend + CSS
+  |
+[6] Tema de Cores + Fonte
+  |
+[7] Estilo de Layout
+  |
+[8] Navegação
+  |
+[9] Estrutura de Menu
+  |
+[10] Funcionalidades (auth/db/payments)
+  |
+[11] Integrações (IA/contexto)
+  |
+[12] Mapeamento de Recursos (IA)
+  |   -> Páginas, Recursos, Fluxos, Navegação, Elementos de UI
+  |
+[13] Geração de Banco de Dados
+  |   -> Schema, entidades e visualização
+  |
+[14] Revisão das Configurações
+  |   -> Aprovação final e compilação
+```
+
+Referências: `frontend/src/pages/CreateAppPage.tsx:755-833`, `frontend/src/services/wizardRestrictionsService.ts:67-927`, `frontend/src/utils/wizardRestrictions.ts:1-79`
+
+#### IDE: Abas e Interações
+
+```
+           +---------+
+           | Files   |
+           +----+----+
+                |
+                v
+           +----+----+
+           | Editor  |  -- Salva -> SQLite local
+           +----+----+             (database.ts)
+                |
+        +-------+-------+
+        |               |
+        v               v
+   +----+----+     +----+----+
+   | Preview |     | Canvas  |
+   +----+----+     +----+----+
+        |
+        v
+   [Inspeção Overlay]
+   - Captura metadados
+   - Seleção de elementos
+
+Outras Abas:
+- Agentes (geração/refactor/debug/test)
+- Dados (schema/entidades)
+- Memoria (contexto/tracking)
+- Integrações (serviços)
+- Notas, Documentacao
+- Tarefas, Dashboard, Roadmap, Diagramas
+```
+
+Referências: `frontend/src/pages/IDEPage.tsx:92-97`, `frontend/src/pages/IDEPage.tsx:2194-2243`, `frontend/src/pages/IDEPage.tsx:2625-2705`, `frontend/src/pages/IDEPage.tsx:2845-2998`
+
 
 ### Backend Architecture
 - **Layered Architecture** - Controllers, Services, Repositories
