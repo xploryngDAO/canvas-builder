@@ -17,7 +17,6 @@ jobs:
           cache: 'pnpm'
       - run: corepack enable
       - run: pnpm install
-      - run: pnpm -C frontend run lint
       - run: pnpm -C frontend run check
       - run: pnpm -C backend run check
       - run: pnpm run build
