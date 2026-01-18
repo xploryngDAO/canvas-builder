@@ -11,6 +11,21 @@ export default defineConfig({
   },
   build: {
     sourcemap: 'hidden',
+    chunkSizeWarningLimit: 2000,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('@monaco-editor') || id.includes('monaco-editor')) return 'monaco';
+            if (id.includes('react-router-dom')) return 'router';
+            if (id.includes('lucide-react')) return 'icons';
+            if (id.includes('zustand')) return 'state';
+            if (id.includes('sql.js')) return 'sql';
+            if (id.includes('react') || id.includes('react-dom')) return 'react';
+          }
+        }
+      }
+    }
   },
   plugins: [
     react({

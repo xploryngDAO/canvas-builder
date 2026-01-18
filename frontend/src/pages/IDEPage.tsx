@@ -60,7 +60,8 @@ import { database } from '@/services/database';
 import AICopilot from '@/components/features/AICopilot';
 import FileTree from '@/components/features/FileTree';
 import { versioningService } from '@/services/versioningService';
-import Editor from '@monaco-editor/react';
+const MonacoEditor = React.lazy(() => import('@monaco-editor/react'));
+import { CanvasVisualFlow } from '../components/canvas/CanvasVisualFlow';
 
 interface IDEPageProps {}
 
@@ -89,8 +90,8 @@ interface InspectedElement {
 }
 
 type DeviceType = 'desktop' | 'tablet' | 'mobile';
-type TabType = 'copilot' | 'files' | 'editor' | 'agentes' | 'dados' | 'memoria' | 'integracoes' | 'notas' | 'documentacao';
-type CanvasTabType = 'preview' | 'canvas' | 'tarefas' | 'dashboard' | 'roadmap' | 'diagramas';
+type TabType = 'copilot' | 'files' | 'editor' | 'agentes' | 'dados' | 'memoria' | 'integracoes' | 'notas' | 'documentacao' | 'preview' | 'canvas' | 'tarefas' | 'dashboard' | 'roadmap' | 'diagramas';
+type CanvasTabType = 'preview' | 'canvas' | 'tarefas' | 'dashboard' | 'roadmap' | 'diagramas' | 'files' | 'editor' | 'agentes' | 'dados' | 'memoria' | 'integracoes' | 'notas' | 'documentacao';
 type EditorSubTabType = 'code-generator' | 'refactor-agent' | 'debug-agent' | 'test-agent';
 type AgentSubTabType = 'code-generator' | 'refactor-agent' | 'debug-agent' | 'test-agent';
 
@@ -116,18 +117,95 @@ const IDEPage: React.FC<IDEPageProps> = () => {
   const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]);
   const [selectedFile, setSelectedFile] = useState<GeneratedFile | null>(null);
   
-  // Sistema de abas horizontais - múltipla seleção
+  // Referência ao editor Monaco
+  const editorRef = useRef<any>(null);
+  
+  // Funções para os botões da toolbar do editor
+  const handleEditorSearch = () => {
+    console.log('🔍 [EDITOR_TOOLBAR] Botão de busca clicado');
+    if (editorRef.current) {
+      try {
+        console.log('🔍 [EDITOR_TOOLBAR] Executando busca (Ctrl+F)');
+        editorRef.current.getAction('actions.find').run();
+      } catch (error) {
+        console.error('❌ [EDITOR_TOOLBAR] Erro ao executar busca:', error);
+      }
+    } else {
+      console.warn('⚠️ [EDITOR_TOOLBAR] Editor não disponível para busca');
+    }
+  };
+
+  const handleEditorSave = async () => {
+    console.log('💾 [EDITOR_TOOLBAR] Botão de salvar clicado');
+    if (selectedFile && editorRef.current) {
+      try {
+        console.log('💾 [EDITOR_TOOLBAR] Salvando arquivo:', selectedFile.path);
+        const currentContent = editorRef.current.getValue();
+        await updateFileContent(currentContent);
+        // TODO: Adicionar toast de sucesso
+        console.log('✅ [EDITOR_TOOLBAR] Arquivo salvo com sucesso');
+      } catch (error) {
+        console.error('❌ [EDITOR_TOOLBAR] Erro ao salvar arquivo:', error);
+      }
+    } else {
+      console.warn('⚠️ [EDITOR_TOOLBAR] Nenhum arquivo selecionado ou editor não disponível');
+    }
+  };
+
+  const handleEditorFormat = () => {
+    console.log('🎨 [EDITOR_TOOLBAR] Botão de formatar clicado');
+    if (editorRef.current) {
+      try {
+        console.log('🎨 [EDITOR_TOOLBAR] Formatando código');
+        editorRef.current.getAction('editor.action.formatDocument').run();
+      } catch (error) {
+        console.error('❌ [EDITOR_TOOLBAR] Erro ao formatar código:', error);
+      }
+    } else {
+      console.warn('⚠️ [EDITOR_TOOLBAR] Editor não disponível para formatação');
+    }
+  };
+
+  const handleEditorGoToLine = () => {
+    console.log('🎯 [EDITOR_TOOLBAR] Botão "Ir para linha" clicado');
+    if (editorRef.current) {
+      try {
+        console.log('🎯 [EDITOR_TOOLBAR] Abrindo "Ir para linha" (Ctrl+G)');
+        editorRef.current.getAction('editor.action.gotoLine').run();
+      } catch (error) {
+        console.error('❌ [EDITOR_TOOLBAR] Erro ao abrir "Ir para linha":', error);
+      }
+    } else {
+      console.warn('⚠️ [EDITOR_TOOLBAR] Editor não disponível para "Ir para linha"');
+    }
+  };
+
+  const handleEditorReplace = () => {
+    console.log('🔄 [EDITOR_TOOLBAR] Botão de substituir clicado');
+    if (editorRef.current) {
+      try {
+        console.log('🔄 [EDITOR_TOOLBAR] Abrindo substituição (Ctrl+H)');
+        editorRef.current.getAction('editor.action.startFindReplaceAction').run();
+      } catch (error) {
+        console.error('❌ [EDITOR_TOOLBAR] Erro ao abrir substituição:', error);
+      }
+    } else {
+      console.warn('⚠️ [EDITOR_TOOLBAR] Editor não disponível para substituição');
+    }
+  };
+  
+  // Sistema de abas horizontais - Copiloto fixo + uma aba não-copiloto por vez
   const [activeTabs, setActiveTabs] = useState<Set<TabType>>(new Set(['copilot']));
-  const [currentTab, setCurrentTab] = useState<TabType>('copilot');
+  const [currentNonCopilotTab, setCurrentNonCopilotTab] = useState<TabType | null>(null);
   
   // Debug: Log do estado das abas
   useEffect(() => {
     console.log('📋 [IDE_PAGE] Estado das abas:', {
       activeTabs: Array.from(activeTabs),
-      currentTab,
-      isCurrentTabActive: activeTabs.has(currentTab)
+      currentNonCopilotTab,
+      copilotAlwaysActive: activeTabs.has('copilot')
     });
-  }, [activeTabs, currentTab]);
+  }, [activeTabs, currentNonCopilotTab]);
   
   // Sistema de abas do Canvas
   const [activeCanvasTabs, setActiveCanvasTabs] = useState<Set<CanvasTabType>>(new Set(['preview']));
@@ -152,7 +230,7 @@ const IDEPage: React.FC<IDEPageProps> = () => {
   const [currentSelectedElement, setCurrentSelectedElement] = useState<HTMLElement | null>(null);
   
   // Estados para redimensionamento
-  const [leftPanelWidth, setLeftPanelWidth] = useState(30);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(50);
   const [canvasHeight, setCanvasHeight] = useState(40);
   const [isResizingHorizontal, setIsResizingHorizontal] = useState(false);
   const [isResizingVertical, setIsResizingVertical] = useState(false);
@@ -209,6 +287,20 @@ const IDEPage: React.FC<IDEPageProps> = () => {
   const [draggedCanvasTab, setDraggedCanvasTab] = useState<CanvasTabType | null>(null);
   const [tabOrder, setTabOrder] = useState<TabType[]>(['copilot', 'files', 'editor', 'agentes', 'documentacao', 'dados', 'memoria', 'integracoes', 'notas']);
   const [canvasTabOrder, setCanvasTabOrder] = useState<CanvasTabType[]>(['preview', 'canvas', 'dashboard', 'diagramas', 'tarefas', 'roadmap']);
+  
+  // Estados para drag and drop entre menus
+  const [draggedFromMenu, setDraggedFromMenu] = useState<'main' | 'canvas' | null>(null);
+  const [draggedTabData, setDraggedTabData] = useState<{id: string, type: 'main' | 'canvas'} | null>(null);
+  const [isDragOverMainMenu, setIsDragOverMainMenu] = useState(false);
+  const [isDragOverCanvasMenu, setIsDragOverCanvasMenu] = useState(false);
+  
+  // Estados para controlar quais abas estão em cada menu
+  const [mainMenuTabs, setMainMenuTabs] = useState<TabType[]>(['copilot', 'files', 'editor', 'agentes', 'documentacao', 'dados', 'memoria', 'integracoes', 'notas']);
+  const [canvasMenuTabs, setCanvasMenuTabs] = useState<CanvasTabType[]>(['preview', 'canvas', 'dashboard', 'diagramas', 'tarefas', 'roadmap']);
+  
+  // Estados para abas transferidas entre menus
+  const [transferredToCanvas, setTransferredToCanvas] = useState<CanvasTabType[]>([]);
+  const [transferredToMain, setTransferredToMain] = useState<CanvasTabType[]>([]);
 
   // Estados para LLM e agentes
   const [selectedLLM, setSelectedLLM] = useState('Gemini 2.5 Flash');
@@ -224,6 +316,18 @@ const IDEPage: React.FC<IDEPageProps> = () => {
     const loadProjectData = async () => {
       console.log('🔍 [IDE_PAGE] Parâmetros da URL:', { urlProjectId, versionId });
       console.log('🔍 [IDE_PAGE] Location state:', location.state);
+      
+      // Verificar se o banco está inicializado
+      if (!database.isInitialized) {
+        console.log('⏳ [IDE_PAGE] Aguardando inicialização do banco...');
+        try {
+          await database.init();
+          console.log('✅ [IDE_PAGE] Banco inicializado com sucesso');
+        } catch (error) {
+          console.error('❌ [IDE_PAGE] Erro ao inicializar banco:', error);
+          return;
+        }
+      }
       
       // Se há projectId e versionId nos parâmetros da URL, carregar versão específica
       if (urlProjectId && versionId) {
@@ -266,7 +370,126 @@ const IDEPage: React.FC<IDEPageProps> = () => {
 
           setAppConfig(config);
           setGeneratedCode(version.code || '');
-          setGeneratedFiles([]);
+          
+          // CORREÇÃO: Carregar arquivos salvos do banco de dados
+          console.log('📁 [IDE_PAGE] Carregando arquivos do banco de dados...');
+          try {
+            const savedFiles = await database.getProjectFiles(urlProjectId, version.id);
+            console.log('📁 [IDE_PAGE] Arquivos carregados do banco:', {
+              count: savedFiles.length,
+              files: savedFiles.map(f => ({ path: f.path, type: f.type, contentLength: f.content.length }))
+            });
+            
+            // CORREÇÃO CRÍTICA: Se não há arquivos na versão específica, tentar carregar arquivos do projeto
+            if (savedFiles.length === 0) {
+              console.log('⚠️ [IDE_PAGE] Nenhum arquivo encontrado na versão específica, tentando carregar arquivos do projeto...');
+              const projectFiles = await database.getProjectFiles(urlProjectId);
+              console.log('📁 [IDE_PAGE] Arquivos do projeto encontrados:', {
+                count: projectFiles.length,
+                files: projectFiles.map(f => ({ path: f.path, type: f.type, contentLength: f.content.length }))
+              });
+              
+              // Se ainda não há arquivos, criar arquivo padrão com o código da versão
+              if (projectFiles.length === 0 && version.code) {
+                console.log('🔧 [IDE_PAGE] Criando arquivo padrão com código da versão...');
+                const defaultFile: GeneratedFile = {
+                  path: 'index.html',
+                  content: version.code,
+                  type: 'html'
+                };
+                setGeneratedFiles([defaultFile]);
+                setSelectedFile(defaultFile);
+                
+                // Salvar o arquivo padrão no banco para futuras cargas
+                try {
+                  await database.saveProjectFiles(urlProjectId, [{
+                    path: defaultFile.path,
+                    content: defaultFile.content,
+                    type: defaultFile.type
+                  }], version.id);
+                  console.log('✅ [IDE_PAGE] Arquivo padrão salvo no banco');
+                } catch (saveError) {
+                  console.error('❌ [IDE_PAGE] Erro ao salvar arquivo padrão:', saveError);
+                }
+              } else {
+                // Usar arquivos do projeto
+                const generatedFilesFromDB: GeneratedFile[] = projectFiles.map(file => ({
+                  path: file.path,
+                  content: file.content,
+                  type: file.type as GeneratedFile['type']
+                }));
+                
+                setGeneratedFiles(generatedFilesFromDB);
+                
+                // CORREÇÃO CRÍTICA: Sincronizar generatedCode com arquivo HTML principal
+                const mainHtmlFile = generatedFilesFromDB.find(f => 
+                  f.path === 'index.html' || 
+                  (f.type === 'html' && generatedFilesFromDB.filter(file => file.type === 'html').length === 1)
+                );
+                
+                if (mainHtmlFile) {
+                  console.log('🔄 [IDE_PAGE] Sincronizando generatedCode com arquivo HTML do projeto:', {
+                    fileName: mainHtmlFile.path,
+                    contentLength: mainHtmlFile.content.length,
+                    previousCodeLength: version.code?.length || 0
+                  });
+                  setGeneratedCode(mainHtmlFile.content);
+                  setSelectedFile(mainHtmlFile);
+                } else if (generatedFilesFromDB.length > 0) {
+                  setSelectedFile(generatedFilesFromDB[0]);
+                }
+              }
+            } else {
+              // Converter ProjectFile[] para GeneratedFile[]
+              const generatedFilesFromDB: GeneratedFile[] = savedFiles.map(file => ({
+                path: file.path,
+                content: file.content,
+                type: file.type as GeneratedFile['type']
+              }));
+              
+              setGeneratedFiles(generatedFilesFromDB);
+              
+              // CORREÇÃO CRÍTICA: Sincronizar generatedCode com arquivo HTML principal
+              const mainHtmlFile = generatedFilesFromDB.find(f => 
+                f.path === 'index.html' || 
+                (f.type === 'html' && generatedFilesFromDB.filter(file => file.type === 'html').length === 1)
+              );
+              
+              if (mainHtmlFile) {
+                console.log('🔄 [IDE_PAGE] Sincronizando generatedCode com arquivo HTML principal:', {
+                  fileName: mainHtmlFile.path,
+                  contentLength: mainHtmlFile.content.length,
+                  previousCodeLength: version.code?.length || 0
+                });
+                setGeneratedCode(mainHtmlFile.content);
+                setSelectedFile(mainHtmlFile);
+              } else if (generatedFilesFromDB.length > 0) {
+                setSelectedFile(generatedFilesFromDB[0]);
+              }
+            }
+          } catch (error) {
+            console.error('❌ [IDE_PAGE] Erro ao carregar arquivos do banco:', error);
+            
+            // FALLBACK: Se há código na versão, criar arquivo padrão
+            if (version.code) {
+              console.log('🔧 [IDE_PAGE] Fallback: criando arquivo com código da versão...');
+              const fallbackFile: GeneratedFile = {
+                path: 'index.html',
+                content: version.code,
+                type: 'html'
+              };
+              setGeneratedFiles([fallbackFile]);
+              setSelectedFile(fallbackFile);
+              
+              // CORREÇÃO CRÍTICA: Garantir que generatedCode seja atualizado com o código da versão
+              console.log('🔄 [IDE_PAGE] Sincronizando generatedCode com código da versão (fallback):', {
+                contentLength: version.code.length
+              });
+              setGeneratedCode(version.code);
+            } else {
+              setGeneratedFiles([]);
+            }
+          }
           
         } catch (error) {
           console.error('❌ [IDE_PAGE] Erro ao carregar versão do projeto:', error);
@@ -306,6 +529,30 @@ const IDEPage: React.FC<IDEPageProps> = () => {
         if (realProjectId) {
           console.log('✅ [IDE_PAGE] Usando projectId real:', realProjectId);
           setProjectId(realProjectId);
+          
+          // NOVO: Salvar arquivos automaticamente no banco de dados
+          if (generatedFiles && generatedFiles.length > 0) {
+            console.log('💾 [IDE_PAGE] Salvando arquivos automaticamente no banco...');
+            try {
+              // Verificar se o banco está inicializado
+              if (!database.isInitialized) {
+                console.log('⏳ [IDE_PAGE] Aguardando inicialização do banco para salvar arquivos...');
+                await database.init();
+              }
+              
+              const filesToSave = generatedFiles.map(file => ({
+                path: file.path,
+                content: file.content,
+                type: file.type
+              }));
+              
+              await database.saveProjectFiles(realProjectId, filesToSave);
+              console.log('✅ [IDE_PAGE] Arquivos salvos automaticamente no banco');
+            } catch (error) {
+              console.error('❌ [IDE_PAGE] Erro ao salvar arquivos automaticamente:', error);
+              // Não bloquear o carregamento se o salvamento falhar
+            }
+          }
         } else {
           console.log('⚠️ [IDE_PAGE] Nenhum projectId real disponível - será criado temporário quando necessário');
         }
@@ -387,38 +634,147 @@ const IDEPage: React.FC<IDEPageProps> = () => {
     }
   }, [isResizingVertical]);
 
+  // NOVO: useEffect para sincronizar editor Monaco quando selectedFile muda
+  useEffect(() => {
+    if (selectedFile && editorRef.current) {
+      const currentValue = editorRef.current.getValue();
+      if (currentValue !== selectedFile.content) {
+        console.log('🔄 [MONACO_SYNC] Sincronizando editor com selectedFile:', {
+          fileName: selectedFile.path,
+          currentLength: currentValue.length,
+          newLength: selectedFile.content.length,
+          isDifferent: currentValue !== selectedFile.content
+        });
+        
+        // Atualizar o valor do editor sem disparar onChange
+        editorRef.current.setValue(selectedFile.content);
+      }
+    }
+  }, [selectedFile?.content, selectedFile?.path]);
+
   const toggleTab = (tabId: TabType) => {
-    const newActiveTabs = new Set(activeTabs);
-    if (newActiveTabs.has(tabId)) {
-      if (newActiveTabs.size > 1) {
-        newActiveTabs.delete(tabId);
-        if (currentTab === tabId) {
-          const remainingTabs = Array.from(newActiveTabs);
-          setCurrentTab(remainingTabs[0]);
+    // Copiloto é sempre fixo - não pode ser removido
+    if (tabId === 'copilot') {
+      return; // Não faz nada se tentar clicar no copiloto
+    }
+    
+    // PREVENÇÃO DE DUPLICAÇÃO: Verificar se a aba está ativa no Canvas
+    if (activeCanvasTabs.has(tabId as CanvasTabType)) {
+      // Se a aba está ativa no Canvas, desativá-la primeiro
+      const newActiveCanvasTabs = new Set(activeCanvasTabs);
+      newActiveCanvasTabs.delete(tabId as CanvasTabType);
+      
+      // Se não restam abas no Canvas, ativar Preview
+      if (newActiveCanvasTabs.size === 0) {
+        newActiveCanvasTabs.add('preview');
+        setCurrentCanvasTab('preview');
+      } else {
+        // Se a aba removida era a atual, mudar para outra
+        if (currentCanvasTab === tabId) {
+          setCurrentCanvasTab(Array.from(newActiveCanvasTabs)[0]);
         }
       }
-    } else {
-      newActiveTabs.add(tabId);
-      setCurrentTab(tabId);
+      setActiveCanvasTabs(newActiveCanvasTabs);
     }
-    setActiveTabs(newActiveTabs);
+    
+    // Para abas não-copiloto: comportamento exclusivo
+    if (currentNonCopilotTab === tabId) {
+      // Se a aba já está ativa, desativa ela (volta para só copiloto)
+      setCurrentNonCopilotTab(null);
+      setActiveTabs(new Set(['copilot']));
+    } else {
+      // Ativa a nova aba (substitui a anterior se houver)
+      setCurrentNonCopilotTab(tabId);
+      setActiveTabs(new Set(['copilot', tabId]));
+    }
   };
 
   const toggleCanvasTab = (tabId: CanvasTabType) => {
-    const newActiveTabs = new Set(activeCanvasTabs);
-    if (newActiveTabs.has(tabId)) {
-      if (newActiveTabs.size > 1) {
-        newActiveTabs.delete(tabId);
-        if (currentCanvasTab === tabId) {
-          const remainingTabs = Array.from(newActiveTabs);
-          setCurrentCanvasTab(remainingTabs[0]);
-        }
-      }
-    } else {
-      newActiveTabs.add(tabId);
-      setCurrentCanvasTab(tabId);
+    // PREVENÇÃO DE DUPLICAÇÃO: Verificar se a aba está ativa no menu principal
+    if (activeTabs.has(tabId as TabType) && currentNonCopilotTab === tabId) {
+      // Se a aba está ativa no menu principal, desativá-la primeiro
+      setCurrentNonCopilotTab(null);
+      setActiveTabs(new Set(['copilot']));
     }
+    
+    // Implementa comportamento de aba única - apenas uma aba ativa por vez
+    const newActiveTabs = new Set([tabId]);
     setActiveCanvasTabs(newActiveTabs);
+    setCurrentCanvasTab(tabId);
+  };
+
+  // Função utilitária para garantir consistência de estados
+  const ensureStateConsistency = () => {
+    console.log('🔧 [CONSISTENCY] Verificando consistência de estados...');
+    
+    // 1. Verificar se há abas duplicadas entre as seções
+    const mainTabs = Array.from(activeTabs).filter(tab => tab !== 'copilot');
+    const canvasTabs = Array.from(activeCanvasTabs);
+    
+    // Encontrar duplicações
+    const duplicatedTabs = mainTabs.filter(tab => canvasTabs.includes(tab as CanvasTabType));
+    
+    if (duplicatedTabs.length > 0) {
+      console.warn('🚨 [CONSISTENCY] Abas duplicadas detectadas, limpando:', duplicatedTabs);
+      
+      // Remover duplicações do menu principal (priorizar Canvas)
+      setActiveTabs(prev => {
+        const cleanTabs = new Set(prev);
+        duplicatedTabs.forEach(tab => {
+          cleanTabs.delete(tab as TabType);
+        });
+        return cleanTabs;
+      });
+      
+      // Se removemos a aba atual do menu principal, ajustar
+      if (currentNonCopilotTab && duplicatedTabs.includes(currentNonCopilotTab as CanvasTabType)) {
+        const remainingMainTabs = mainTabs.filter(tab => !duplicatedTabs.includes(tab));
+        setCurrentNonCopilotTab(remainingMainTabs.length > 0 ? remainingMainTabs[0] as TabType : null);
+      }
+    }
+    
+    // 2. Verificar consistência entre transferredToCanvas e activeCanvasTabs
+    const orphanedTransferredToCanvas = transferredToCanvas.filter(tab => !activeCanvasTabs.has(tab as CanvasTabType));
+    if (orphanedTransferredToCanvas.length > 0) {
+      console.warn('🚨 [CONSISTENCY] Abas órfãs em transferredToCanvas:', orphanedTransferredToCanvas);
+      setTransferredToCanvas(prev => prev.filter(tab => activeCanvasTabs.has(tab as CanvasTabType)));
+    }
+    
+    // 3. Verificar consistência entre transferredToMain e activeTabs
+    const orphanedTransferredToMain = transferredToMain.filter(tab => !activeTabs.has(tab as TabType));
+    if (orphanedTransferredToMain.length > 0) {
+      console.warn('🚨 [CONSISTENCY] Abas órfãs em transferredToMain:', orphanedTransferredToMain);
+      setTransferredToMain(prev => prev.filter(tab => activeTabs.has(tab as TabType)));
+    }
+    
+    // 4. Garantir que transferredToCanvas não tenha duplicações
+    const uniqueTransferredToCanvas = [...new Set(transferredToCanvas)];
+    if (uniqueTransferredToCanvas.length !== transferredToCanvas.length) {
+      console.warn('🚨 [CONSISTENCY] Duplicações em transferredToCanvas removidas');
+      setTransferredToCanvas(uniqueTransferredToCanvas);
+    }
+    
+    // 5. Garantir que transferredToMain não tenha duplicações
+    const uniqueTransferredToMain = [...new Set(transferredToMain)];
+    if (uniqueTransferredToMain.length !== transferredToMain.length) {
+      console.warn('🚨 [CONSISTENCY] Duplicações em transferredToMain removidas');
+      setTransferredToMain(uniqueTransferredToMain);
+    }
+    
+    // 6. Garantir que o Canvas sempre tenha pelo menos Preview ativo
+    if (activeCanvasTabs.size === 0) {
+      console.warn('🚨 [CONSISTENCY] Canvas sem abas ativas, ativando Preview');
+      setActiveCanvasTabs(new Set(['preview']));
+      setCurrentCanvasTab('preview');
+    }
+    
+    // 7. Verificar se currentCanvasTab está nas abas ativas
+    if (!activeCanvasTabs.has(currentCanvasTab)) {
+      console.warn('🚨 [CONSISTENCY] currentCanvasTab não está ativo, corrigindo');
+      setCurrentCanvasTab(Array.from(activeCanvasTabs)[0]);
+    }
+    
+    console.log('✅ [CONSISTENCY] Verificação de consistência concluída');
   };
 
   // Função para alternar sub-abas dos Agentes
@@ -493,6 +849,275 @@ const IDEPage: React.FC<IDEPageProps> = () => {
 
     setCanvasTabOrder(newOrder);
     setDraggedCanvasTab(null);
+  };
+
+  // Funções de drag and drop entre menus
+  const handleCrossMenuDragStart = (e: React.DragEvent, tabId: string, fromMenu: 'main' | 'canvas') => {
+    setDraggedFromMenu(fromMenu);
+    setDraggedTabData({ id: tabId, type: fromMenu });
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', JSON.stringify({ id: tabId, type: fromMenu }));
+  };
+
+  const handleMainMenuDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (draggedFromMenu === 'canvas') {
+      e.dataTransfer.dropEffect = 'move';
+      setIsDragOverMainMenu(true);
+    }
+  };
+
+  const handleMainMenuDragLeave = (e: React.DragEvent) => {
+    setIsDragOverMainMenu(false);
+  };
+
+  const handleCanvasMenuDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (draggedFromMenu === 'main') {
+      e.dataTransfer.dropEffect = 'move';
+      setIsDragOverCanvasMenu(true);
+    }
+  };
+
+  const handleCanvasMenuDragLeave = (e: React.DragEvent) => {
+    setIsDragOverCanvasMenu(false);
+  };
+
+  const handleMainMenuDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOverMainMenu(false);
+    
+    if (!draggedTabData || draggedTabData.type !== 'canvas') return;
+    
+    const tabId = draggedTabData.id as string;
+    
+    // Se a aba veio do Canvas (abas transferidas de volta)
+    if (transferredToCanvas.includes(tabId as CanvasTabType)) {
+      // CORREÇÃO CRÍTICA: Remove IMEDIATAMENTE da lista de transferidas para Canvas
+      setTransferredToCanvas(prev => prev.filter(id => id !== (tabId as CanvasTabType)));
+      
+      // CORREÇÃO CRÍTICA: Remove COMPLETAMENTE das abas ativas do Canvas
+      setActiveCanvasTabs(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(tabId as CanvasTabType);
+        // Se não sobrou nenhuma aba ativa no Canvas, ativa Preview
+        if (newSet.size === 0) {
+          newSet.add('preview');
+        }
+        return newSet;
+      });
+      
+      // CORREÇÃO CRÍTICA: Se era a aba atual do Canvas, muda para Preview
+      if (currentCanvasTab === tabId) {
+        setCurrentCanvasTab('preview');
+      }
+      
+      // Ativa a aba no menu principal (desativando outras não-copilot)
+      const mainTabId = tabId as TabType;
+      setActiveTabs(prev => {
+        const newSet = new Set(prev);
+        // Remove todas as abas não-copilot ativas
+        Array.from(newSet).forEach(tab => {
+          if (tab !== 'copilot') {
+            newSet.delete(tab);
+          }
+        });
+        // Adiciona a nova aba
+        newSet.add(mainTabId);
+        return newSet;
+      });
+      setCurrentNonCopilotTab(mainTabId);
+    }
+    // Se é uma aba original do Canvas sendo transferida para o menu principal
+    else if (['preview', 'canvas', 'tarefas', 'dashboard', 'roadmap', 'diagramas'].includes(tabId)) {
+      // Adiciona à lista de transferidas para o menu principal
+      setTransferredToMain(prev => [...prev.filter(id => id !== tabId), tabId as CanvasTabType]);
+      
+      // Remove das abas ativas do Canvas
+      setActiveCanvasTabs(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(tabId as CanvasTabType);
+        // Se não sobrou nenhuma aba ativa no Canvas, ativa Preview
+        if (newSet.size === 0) {
+          newSet.add('preview');
+        }
+        return newSet;
+      });
+      
+      // Se era a aba atual do Canvas, muda para Preview
+      if (currentCanvasTab === tabId) {
+        setCurrentCanvasTab('preview');
+      }
+      
+      // Ativa a aba no menu principal (desativando outras não-copilot)
+      const mainTabId = tabId as TabType;
+      setActiveTabs(prev => {
+        const newSet = new Set(prev);
+        // Remove todas as abas não-copilot ativas
+        Array.from(newSet).forEach(tab => {
+          if (tab !== 'copilot') {
+            newSet.delete(tab);
+          }
+        });
+        // Adiciona a nova aba
+        newSet.add(mainTabId);
+        return newSet;
+      });
+      setCurrentNonCopilotTab(mainTabId);
+    }
+    
+    // Reset drag states
+    setDraggedFromMenu(null);
+    setDraggedTabData(null);
+    
+    // Garantir consistência de estados após a operação
+    setTimeout(() => ensureStateConsistency(), 0);
+  };
+
+  const handleCanvasMenuDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOverCanvasMenu(false);
+    
+    if (!draggedTabData || draggedTabData.type !== 'main') return;
+    
+    const tabId = draggedTabData.id as string;
+    
+    // Só permite transferir abas que não sejam 'copilot'
+    if (tabId === 'copilot') return;
+    
+    // Se a aba veio do menu principal (abas sendo transferidas)
+    if (['files', 'editor', 'agentes', 'documentacao', 'dados', 'memoria', 'integracoes', 'notas'].includes(tabId)) {
+      
+      // NOVA RESTRIÇÃO: Máximo uma aba da esquerda na direita por vez
+      // Se já existe uma aba transferida do menu principal, retorná-la automaticamente
+      if (transferredToCanvas.length > 0) {
+        const existingTransferredTab = transferredToCanvas[0];
+        
+        console.log('🔄 [CANVAS_DROP] Retornando aba existente para o menu principal:', existingTransferredTab);
+        
+        // CORREÇÃO CRÍTICA: Remove IMEDIATAMENTE da lista de transferidas
+        setTransferredToCanvas([]);
+        
+        // CORREÇÃO CRÍTICA: Remove COMPLETAMENTE das abas ativas do Canvas
+        setActiveCanvasTabs(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(existingTransferredTab as CanvasTabType);
+          // Se não sobrou nenhuma aba ativa no Canvas, ativa Preview
+          if (newSet.size === 0) {
+            newSet.add('preview');
+          }
+          return newSet;
+        });
+        
+        // CORREÇÃO CRÍTICA: Se era a aba atual do Canvas, muda para Preview
+        if (currentCanvasTab === existingTransferredTab) {
+          setCurrentCanvasTab('preview');
+        }
+        
+        // Ativar a aba retornada no menu principal
+        setActiveTabs(prev => {
+          const newSet = new Set(prev);
+          // Remove todas as abas não-copilot ativas
+          Array.from(newSet).forEach(tab => {
+            if (tab !== 'copilot') {
+              newSet.delete(tab);
+            }
+          });
+          // Adiciona a aba retornada
+          newSet.add(existingTransferredTab);
+          return newSet;
+        });
+        setCurrentNonCopilotTab(existingTransferredTab);
+      }
+      
+      // Adiciona à lista de transferidas para Canvas (substituindo a anterior)
+      setTransferredToCanvas([tabId as CanvasTabType]);
+      
+      // Remove das abas ativas do menu principal
+      if (activeTabs.has(tabId as TabType)) {
+        const newActiveTabs = new Set(activeTabs);
+        newActiveTabs.delete(tabId as TabType);
+        setActiveTabs(newActiveTabs);
+        
+        // Se era a aba atual, muda para outra
+        if (currentNonCopilotTab === tabId && newActiveTabs.size > 0) {
+          const remainingTabs = Array.from(newActiveTabs).filter(tab => tab !== 'copilot');
+          if (remainingTabs.length > 0) {
+            setCurrentNonCopilotTab(remainingTabs[0]);
+          }
+        }
+      }
+      
+      // CORREÇÃO: Desativa todas as outras abas do Canvas e ativa apenas a transferida
+      const canvasTabId = tabId as CanvasTabType;
+      setActiveCanvasTabs(new Set([canvasTabId])); // Apenas a nova aba ativa
+      setCurrentCanvasTab(canvasTabId);
+    }
+    // Se é uma aba transferida de volta do menu principal para o Canvas
+    else if (transferredToMain.includes(tabId as CanvasTabType)) {
+      // Remove da lista de transferidas para o menu principal
+      setTransferredToMain(prev => prev.filter(id => id !== tabId));
+      
+      // Remove das abas ativas do menu principal se estiver ativa
+      if (activeTabs.has(tabId as TabType)) {
+        const newActiveTabs = new Set(activeTabs);
+        newActiveTabs.delete(tabId as TabType);
+        setActiveTabs(newActiveTabs);
+        
+        // Se era a aba atual, muda para outra
+        if (currentNonCopilotTab === tabId && newActiveTabs.size > 0) {
+          const remainingTabs = Array.from(newActiveTabs).filter(tab => tab !== 'copilot');
+          if (remainingTabs.length > 0) {
+            setCurrentNonCopilotTab(remainingTabs[0]);
+          }
+        }
+      }
+      
+      // CORREÇÃO: Desativa todas as outras abas do Canvas e ativa apenas a transferida
+      const canvasTabId = tabId as CanvasTabType;
+      setActiveCanvasTabs(new Set([canvasTabId])); // Apenas a nova aba ativa
+      setCurrentCanvasTab(canvasTabId);
+    }
+    
+    // Reset drag states
+    setDraggedFromMenu(null);
+    setDraggedTabData(null);
+    
+    // Garantir consistência de estados após a operação
+    setTimeout(() => ensureStateConsistency(), 0);
+  };
+
+  // Nova função para fechar aba transferida (retorna inativa)
+  const handleCloseTransferredTab = (tabId: string) => {
+    console.log('🔄 [IDE_PAGE] Fechando aba transferida (retorna inativa):', tabId);
+    
+    // Remover da lista de transferidas para Canvas
+    setTransferredToCanvas(prev => prev.filter(id => id !== (tabId as CanvasTabType)));
+    
+    // Desativar no Canvas
+    setActiveCanvasTabs(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(tabId as CanvasTabType);
+      // Se não há mais abas ativas no Canvas, ativar Preview
+      if (newSet.size === 0) {
+        newSet.add('preview');
+      }
+      return newSet;
+    });
+    
+    // Se era a aba atual do Canvas, muda para Preview
+    if (currentCanvasTab === tabId) {
+      setCurrentCanvasTab('preview');
+    }
+    
+    // Adicionar de volta ao menu principal como INATIVA
+    setTransferredToMain(prev => [...prev.filter(id => id !== (tabId as CanvasTabType)), tabId as CanvasTabType]);
+    
+    // NÃO ativar no menu principal (diferente do handleMainMenuDrop)
+    // A aba fica disponível mas inativa na esquerda
+    
+    // Garantir consistência
+    setTimeout(() => ensureStateConsistency(), 0);
   };
 
   const getDeviceStyles = () => {
@@ -571,7 +1196,7 @@ const IDEPage: React.FC<IDEPageProps> = () => {
     if (!activeTabs.has('editor')) {
       setActiveTabs(prev => new Set([...prev, 'editor']));
     }
-    setCurrentTab('editor');
+    setCurrentNonCopilotTab('editor');
     
     // Expandir painel esquerdo para mostrar o editor com limite mobile
     const mobilePreviewWidth = 25; // 25% para preview mobile
@@ -1102,11 +1727,13 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
 
   // Função para enviar elemento inspecionado para o copiloto
   const sendInspectedElementToCopilot = (elementInfo: InspectedElement) => {
-    // Ativar a aba do copiloto se não estiver ativa
+    console.log('🔍 [INSPECT] Iniciando envio de elemento para o copiloto:', elementInfo);
+    
+    // Garantir que a aba do copiloto esteja ativa (copiloto é sempre ativo por padrão)
     if (!activeTabs.has('copilot')) {
+      console.log('🔧 [INSPECT] Ativando aba do copiloto...');
       setActiveTabs(prev => new Set([...prev, 'copilot']));
     }
-    setCurrentTab('copilot');
     
     // Criar tag de identificação concisa
     let componentTag = `<${elementInfo.tagName.toLowerCase()}`;
@@ -1130,16 +1757,28 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
       timestamp: Date.now()
     };
 
+    console.log('📤 [INSPECT] Disparando evento addComponentTag:', {
+      componentTag,
+      tagData,
+      eventType: 'addComponentTag'
+    });
+
     // Enviar tag diretamente para o copiloto via evento customizado
-    window.dispatchEvent(new CustomEvent('addComponentTag', { detail: tagData }));
+    const customEvent = new CustomEvent('addComponentTag', { detail: tagData });
+    window.dispatchEvent(customEvent);
+    
+    console.log('✅ [INSPECT] Evento addComponentTag disparado com sucesso');
     
     // Esconder o botão após enviar
     setShowContextButton(false);
     
-    console.log('📤 Tag enviada para o copiloto:', {
+    console.log('📤 [INSPECT] Tag enviada para o copiloto:', {
       componentTag,
-      elementInfo,
-      tagData
+      elementInfo: elementInfo.tagName,
+      elementId: elementInfo.id,
+      elementClass: elementInfo.className,
+      tagData,
+      success: true
     });
   };
 
@@ -1167,11 +1806,67 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
               setGeneratedCode(newCode);
               console.log('🔄 [IDE_PAGE] Código atualizado via AICopilot:', explanation);
               
+              // CORREÇÃO: Atualizar arquivos gerados com o novo código
+              if (generatedFiles.length > 0) {
+                // Encontrar o arquivo HTML principal para atualizar
+                const mainHtmlFile = generatedFiles.find(f => 
+                  f.path === 'index.html' || 
+                  (f.type === 'html' && generatedFiles.filter(file => file.type === 'html').length === 1)
+                );
+                
+                if (mainHtmlFile) {
+                  console.log('🔄 [IDE_PAGE] Atualizando arquivo HTML principal no editor:', mainHtmlFile.path);
+                  
+                  // Atualizar o array de arquivos gerados
+                  const updatedFiles = generatedFiles.map(file => 
+                    file.path === mainHtmlFile.path 
+                      ? { ...file, content: newCode }
+                      : file
+                  );
+                  
+                  setGeneratedFiles(updatedFiles);
+                  
+                  // Se este arquivo está selecionado, atualizar também o selectedFile
+                  if (selectedFile && selectedFile.path === mainHtmlFile.path) {
+                    console.log('🔄 [IDE_PAGE] Atualizando arquivo selecionado no editor');
+                    setSelectedFile({ ...selectedFile, content: newCode });
+                  }
+                } else {
+                  // Se não há arquivo HTML principal, criar um novo
+                  console.log('🔄 [IDE_PAGE] Criando novo arquivo index.html com código do Copiloto');
+                  const newHtmlFile = {
+                    path: 'index.html',
+                    content: newCode,
+                    type: 'html' as const
+                  };
+                  
+                  const updatedFiles = [...generatedFiles, newHtmlFile];
+                  setGeneratedFiles(updatedFiles);
+                  
+                  // Se não há arquivo selecionado, selecionar o novo
+                  if (!selectedFile) {
+                    setSelectedFile(newHtmlFile);
+                  }
+                }
+              } else {
+                // Se não há arquivos, criar o primeiro arquivo com o código do Copiloto
+                console.log('🔄 [IDE_PAGE] Criando primeiro arquivo com código do Copiloto');
+                const newHtmlFile = {
+                  path: 'index.html',
+                  content: newCode,
+                  type: 'html' as const
+                };
+                
+                setGeneratedFiles([newHtmlFile]);
+                setSelectedFile(newHtmlFile);
+              }
+              
               // Sempre salvar versão quando há alterações via copiloto (userPrompt existe)
               if (userPrompt) {
+                // Tornar currentProjectId acessível em try/catch
+                let currentProjectId = projectId;
                 try {
                   // CORREÇÃO: Priorizar projectId real, criar temporário apenas como último recurso
-                  let currentProjectId = projectId;
                   
                   console.log('🔍 [IDE_PAGE] Verificando projectId para versionamento:', {
                     projectId: currentProjectId,
@@ -1221,6 +1916,106 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
                     codeLength: newCode.length,
                     timestamp: new Date().toISOString()
                   });
+
+                  // CORREÇÃO CRÍTICA: Atualizar arquivos do projeto com as alterações do AI Copilot
+                  console.log('🔄 [IDE_PAGE] Atualizando arquivos do projeto com alterações do AI Copilot...');
+                  
+                  if (selectedFile) {
+                    console.log('🔄 [IDE_PAGE] Atualizando arquivo selecionado com código do AI Copilot...');
+                    
+                    // Atualizar o arquivo selecionado
+                    const updatedFile = { ...selectedFile, content: newCode };
+                    
+                    // Atualizar lista de arquivos
+                    const updatedFiles = generatedFiles.map(file => 
+                      file.path === selectedFile.path ? updatedFile : file
+                    );
+                    
+                    setGeneratedFiles(updatedFiles);
+                    setSelectedFile(updatedFile);
+                    
+                    // Salvar arquivos atualizados no banco de dados
+                    try {
+                      await database.saveProjectFiles(currentProjectId, updatedFiles.map(f => ({
+                        path: f.path,
+                        content: f.content,
+                        type: f.type
+                      })), versionId);
+                      
+                      console.log('✅ [IDE_PAGE] Arquivos atualizados salvos no banco de dados:', {
+                        projectId: currentProjectId,
+                        versionId,
+                        filesCount: updatedFiles.length,
+                        updatedFile: updatedFile.path
+                      });
+                    } catch (saveError) {
+                      console.error('❌ [IDE_PAGE] Erro ao salvar arquivos atualizados:', saveError);
+                    }
+                  } else if (generatedFiles.length === 0) {
+                    console.log('🔄 [IDE_PAGE] Criando arquivo padrão com código do AI Copilot...');
+                    
+                    // Se não há arquivos, criar arquivo padrão
+                    const newHtmlFile = {
+                      path: 'index.html',
+                      content: newCode,
+                      type: 'html' as const
+                    };
+                    
+                    setGeneratedFiles([newHtmlFile]);
+                    setSelectedFile(newHtmlFile);
+                    
+                    // Salvar no banco
+                    try {
+                      await database.saveProjectFiles(currentProjectId, [{
+                        path: newHtmlFile.path,
+                        content: newHtmlFile.content,
+                        type: newHtmlFile.type
+                      }], versionId);
+                      
+                      console.log('✅ [IDE_PAGE] Novo arquivo HTML salvo no banco de dados:', {
+                        projectId: currentProjectId,
+                        versionId,
+                        fileName: newHtmlFile.path
+                      });
+                    } catch (saveError) {
+                      console.error('❌ [IDE_PAGE] Erro ao salvar novo arquivo:', saveError);
+                    }
+                  } else {
+                    console.log('🔄 [IDE_PAGE] Atualizando arquivo HTML principal com código do AI Copilot...');
+                    
+                    // Se há arquivos mas nenhum selecionado, atualizar o arquivo HTML principal
+                    const mainHtmlFile = generatedFiles.find(f => 
+                      f.path === 'index.html' || 
+                      (f.type === 'html' && generatedFiles.filter(file => file.type === 'html').length === 1)
+                    );
+                    
+                    if (mainHtmlFile) {
+                      const updatedMainFile = { ...mainHtmlFile, content: newCode };
+                      const updatedFiles = generatedFiles.map(file => 
+                        file.path === mainHtmlFile.path ? updatedMainFile : file
+                      );
+                      
+                      setGeneratedFiles(updatedFiles);
+                      setSelectedFile(updatedMainFile);
+                      
+                      // Salvar arquivos atualizados no banco
+                      try {
+                        await database.saveProjectFiles(currentProjectId, updatedFiles.map(f => ({
+                          path: f.path,
+                          content: f.content,
+                          type: f.type
+                        })), versionId);
+                        
+                        console.log('✅ [IDE_PAGE] Arquivo HTML principal atualizado e salvo no banco:', {
+                          projectId: currentProjectId,
+                          versionId,
+                          fileName: updatedMainFile.path
+                        });
+                      } catch (saveError) {
+                        console.error('❌ [IDE_PAGE] Erro ao salvar arquivo HTML principal:', saveError);
+                      }
+                    }
+                  }
 
                   // Mostrar feedback visual de sucesso ao usuário
                   // TODO: Implementar toast/notificação de sucesso
@@ -1308,9 +2103,9 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
                   }
                   
                   // Mudar para a aba Editor se não estiver ativa
-                  if (currentTab !== 'editor') {
+                  if (currentNonCopilotTab !== 'editor') {
                     console.log('📋 [IDE_PAGE] Mudando para aba Editor');
-                    setCurrentTab('editor');
+                    setCurrentNonCopilotTab('editor');
                   }
                 }}
               />
@@ -1338,10 +2133,7 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
               </div>
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => {
-                    // Implementar busca (Ctrl+F)
-                    console.log('Buscar no código');
-                  }}
+                  onClick={handleEditorSearch}
                   className="p-2 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
                   title="Buscar (Ctrl+F)"
                 >
@@ -1351,10 +2143,7 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
                   </svg>
                 </button>
                 <button
-                  onClick={() => {
-                    // Implementar salvar (Ctrl+S)
-                    console.log('Salvar arquivo');
-                  }}
+                  onClick={handleEditorSave}
                   className="p-2 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
                   title="Salvar (Ctrl+S)"
                 >
@@ -1365,10 +2154,7 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
                   </svg>
                 </button>
                 <button
-                  onClick={() => {
-                    // Implementar formatar código
-                    console.log('Formatar código');
-                  }}
+                  onClick={handleEditorFormat}
                   className="p-2 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
                   title="Formatar Código"
                 >
@@ -1378,10 +2164,7 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
                   </svg>
                 </button>
                 <button
-                  onClick={() => {
-                    // Implementar ir para linha
-                    console.log('Ir para linha');
-                  }}
+                  onClick={handleEditorGoToLine}
                   className="p-2 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
                   title="Ir para Linha (Ctrl+G)"
                 >
@@ -1391,10 +2174,7 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
                   </svg>
                 </button>
                 <button
-                  onClick={() => {
-                    // Implementar substituir
-                    console.log('Substituir texto');
-                  }}
+                  onClick={handleEditorReplace}
                   className="p-2 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
                   title="Substituir (Ctrl+H)"
                 >
@@ -1414,7 +2194,8 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
               {selectedFile ? (
                 <div className="h-full bg-gray-900/50 flex flex-col">
                   <div className="flex-1">
-                    <Editor
+                    <React.Suspense fallback={<div className="text-gray-400 p-4">Carregando editor...</div>}>
+                    <MonacoEditor
                       height="100%"
                       language={getMonacoLanguage(selectedFile.path)}
                       value={selectedFile.content}
@@ -1440,7 +2221,7 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
                         contextmenu: true,
                         mouseWheelZoom: true,
                         cursorBlinking: 'blink',
-                        cursorSmoothCaretAnimation: true,
+                        cursorSmoothCaretAnimation: 'on',
                         smoothScrolling: true,
                         folding: true,
                         foldingHighlight: true,
@@ -1452,6 +2233,7 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
                         }
                       }}
                     />
+                    </React.Suspense>
                   </div>
                 </div>
               ) : (
@@ -1596,13 +2378,31 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
           </div>
         );
 
+      
+
+      // Casos para abas do Canvas transferidas para o menu principal
+      case 'preview' as TabType:
+        return renderCanvasTabContent('preview');
+      case 'canvas' as TabType:
+        return renderCanvasTabContent('canvas');
+      case 'tarefas' as TabType:
+        return renderCanvasTabContent('tarefas');
+      case 'dashboard' as TabType:
+        return renderCanvasTabContent('dashboard');
+      case 'roadmap' as TabType:
+        return renderCanvasTabContent('roadmap');
+      case 'diagramas' as TabType:
+        return renderCanvasTabContent('diagramas');
+
       default:
         return null;
     }
   };
 
   // Função para obter a linguagem do Monaco Editor baseada na extensão do arquivo
-  const getMonacoLanguage = (fileName: string): string => {
+  const getMonacoLanguage = (fileName: string | undefined): string => {
+    if (!fileName) return 'plaintext';
+    
     const extension = fileName.split('.').pop()?.toLowerCase();
     switch (extension) {
       case 'html':
@@ -1633,13 +2433,18 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
   };
 
   // Função para atualizar o conteúdo do arquivo
-  const updateFileContent = (newContent: string) => {
-    if (!selectedFile) return;
+  const updateFileContent = async (newContent: string) => {
+    if (!selectedFile) {
+      console.warn('⚠️ [IDE_PAGE] updateFileContent chamado sem selectedFile');
+      return;
+    }
 
-    console.log('📝 [IDE_PAGE] Atualizando conteúdo do arquivo:', {
+    console.log('📝 [IDE_PAGE] Iniciando atualização do arquivo:', {
       fileName: selectedFile.path,
       oldLength: selectedFile.content.length,
-      newLength: newContent.length
+      newLength: newContent.length,
+      fileType: selectedFile.type,
+      hasChanged: selectedFile.content !== newContent
     });
 
     // Atualizar o arquivo no array de arquivos gerados
@@ -1654,10 +2459,90 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
     // Atualizar o arquivo selecionado
     setSelectedFile({ ...selectedFile, content: newContent });
     
-    // Se for um arquivo HTML principal, atualizar o preview
-    if (selectedFile.path === 'index.html' || selectedFile.type === 'html') {
-      console.log('🎯 [IDE_PAGE] Atualizando preview para arquivo HTML:', selectedFile.path);
+    // CORREÇÃO: Simplificar lógica - atualizar preview para qualquer arquivo HTML
+    if (selectedFile.type === 'html') {
+      console.log('🎯 [IDE_PAGE] Atualizando preview para arquivo HTML:', {
+        fileName: selectedFile.path,
+        isIndexHtml: selectedFile.path === 'index.html',
+        contentLength: newContent.length
+      });
       setGeneratedCode(newContent);
+    } else {
+      console.log('📄 [IDE_PAGE] Arquivo não-HTML editado, preview não atualizado:', {
+        fileName: selectedFile.path,
+        fileType: selectedFile.type
+      });
+    }
+
+    // NOVO: Salvar automaticamente no banco de dados quando arquivo é editado
+    if (projectId) {
+      try {
+        // Verificar se o banco está inicializado
+        if (!database.isInitialized) {
+          console.log('⏳ [IDE_PAGE] Aguardando inicialização do banco para salvar arquivo...');
+          await database.init();
+        }
+        
+        console.log('💾 [IDE_PAGE] Salvando arquivo editado no banco de dados...');
+        await database.saveProjectFiles(projectId, [{
+          path: selectedFile.path,
+          content: newContent,
+          type: selectedFile.type
+        }]);
+        console.log('✅ [IDE_PAGE] Arquivo salvo automaticamente no banco');
+
+        // NOVO: Criar versão automaticamente para edições manuais
+        if (selectedFile.type === 'html') {
+          try {
+            console.log('📝 [IDE_PAGE] Criando versão para edição manual...', {
+              projectId,
+              fileName: selectedFile.path,
+              contentLength: newContent.length,
+              isManualEdit: true
+            });
+            
+            // Criar prompt descritivo para edição manual
+            const manualEditPrompt = `Edição manual do arquivo ${selectedFile.path} - ${new Date().toLocaleString()}`;
+            
+            // Salvar versão automaticamente
+            const versionId = await versioningService.saveVersionAutomatically(
+              projectId,
+              manualEditPrompt,
+              newContent
+            );
+            
+            console.log('✅ [IDE_PAGE] Versão criada para edição manual:', {
+              versionId,
+              projectId,
+              fileName: selectedFile.path,
+              isManualEdit: true,
+              timestamp: new Date().toISOString()
+            });
+            
+            // Atualizar arquivos do projeto com a nova versão
+            const updatedFiles = generatedFiles.map(file => 
+              file.path === selectedFile.path ? { ...file, content: newContent } : file
+            );
+            
+            // Salvar arquivos atualizados associados à nova versão
+            await database.saveProjectFiles(projectId, updatedFiles.map(f => ({
+              path: f.path,
+              content: f.content,
+              type: f.type
+            })), versionId);
+            
+            console.log('✅ [IDE_PAGE] Arquivos da edição manual salvos na nova versão');
+            
+          } catch (versionError) {
+            console.error('❌ [IDE_PAGE] Erro ao criar versão para edição manual:', versionError);
+            // Não bloquear a edição se o versionamento falhar
+          }
+        }
+        
+      } catch (error) {
+        console.error('❌ [IDE_PAGE] Erro ao salvar arquivo editado:', error);
+        // Não bloquear a edição se o salvamento falhar
+      }
     }
   };
 
@@ -1739,7 +2624,8 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
                 
                 {/* Monaco Editor */}
                 <div className="flex-1">
-                  <Editor
+                  <React.Suspense fallback={<div className="text-gray-400 p-4">Carregando editor...</div>}>
+                  <MonacoEditor
                     height="100%"
                     language={getMonacoLanguage(selectedFile.path)}
                     value={selectedFile.content}
@@ -1761,7 +2647,6 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
                       insertSpaces: true,
                       detectIndentation: true,
                       folding: true,
-                      bracketMatching: 'always',
                       autoIndent: 'full',
                       formatOnPaste: true,
                       formatOnType: true,
@@ -1782,7 +2667,6 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
                       occurrencesHighlight: 'singleFile',
                       codeLens: true,
                       colorDecorators: true,
-                      lightbulb: { enabled: 'on' },
                       links: true,
                       find: {
                         addExtraSpaceOnTop: false,
@@ -1797,6 +2681,9 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
                         contentLength: selectedFile.content.length
                       });
                       
+                      // Armazenar referência do editor
+                      editorRef.current = editor;
+                      
                       // Configurar atalhos de teclado personalizados
                       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
                         console.log('💾 [MONACO_EDITOR] Salvamento manual (Ctrl+S)');
@@ -1804,6 +2691,7 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
                       });
                     }}
                   />
+                  </React.Suspense>
                 </div>
               </>
             ) : (
@@ -2104,13 +2992,19 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
         );
 
       case 'canvas':
+        console.log('🎨 [IDEPage] Renderizando Canvas com:', {
+          projectId: projectId || 'default',
+          generatedFilesCount: generatedFiles.length,
+          generatedFiles: generatedFiles.map(f => ({ path: f.path, type: f.type, contentLength: f.content?.length || 0 })),
+          generatedCodeLength: generatedCode?.length || 0
+        });
         return (
-          <div className="p-4 h-full bg-gray-900/50">
-            <div className="text-center text-gray-500 mt-8">
-              <Square size={48} className="mx-auto mb-4 opacity-50" />
-              <p>Canvas de Visualização</p>
-              <p className="text-sm mt-2">Visualize as páginas criadas em modais do formato de tela selecionado.</p>
-            </div>
+          <div className="h-full bg-gray-900/50">
+            <CanvasVisualFlow 
+              projectId={projectId || 'default'} 
+              projectFiles={generatedFiles}
+              generatedCode={generatedCode}
+            />
           </div>
         );
 
@@ -2158,6 +3052,210 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
           </div>
         );
 
+      // Casos para abas transferidas do menu principal
+      case 'files':
+        return (
+          <div className="p-4 h-full bg-gray-900/50">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-white font-medium">Arquivos Gerados</h3>
+              <Button
+                onClick={downloadProject}
+                disabled={generatedFiles.length === 0 && !generatedCode}
+                className="p-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Download do projeto completo"
+              >
+                <Download size={16} />
+              </Button>
+            </div>
+            {generatedFiles.length > 0 ? (
+              <FileTree 
+                files={generatedFiles}
+                selectedFile={selectedFile}
+                onFileSelect={(file) => {
+                  console.log('📁 [IDE_PAGE] Arquivo selecionado no Canvas:', {
+                    path: file.path,
+                    type: file.type,
+                    contentLength: file.content?.length || 0,
+                    previousSelectedFile: selectedFile?.path || 'nenhum'
+                  });
+                  
+                  setSelectedFile(file);
+                  
+                  // Auto-expandir o Editor no Canvas quando um arquivo é selecionado
+                  if (!activeCanvasTabs.has('editor')) {
+                    console.log('📋 [IDE_PAGE] Auto-expandindo aba Editor no Canvas');
+                    setActiveCanvasTabs(prev => {
+                      const next = new Set(prev);
+                      next.add('editor');
+                      return next;
+                    });
+                  }
+                  
+                  // Mudar para a aba Editor no Canvas se não estiver ativa
+                  if (currentCanvasTab !== 'editor') {
+                    console.log('📋 [IDE_PAGE] Mudando para aba Editor no Canvas');
+                    setCurrentCanvasTab('editor');
+                  }
+                }}
+              />
+            ) : (
+              <div className="text-center text-gray-400 py-8">
+                <FolderOpen size={48} className="mx-auto mb-4 opacity-50" />
+                <p>Nenhum arquivo foi gerado ainda</p>
+                <p className="text-sm mt-2">Use o Copilot para gerar código e criar arquivos</p>
+              </div>
+            )}
+          </div>
+        );
+
+      case 'editor':
+        return (
+          <div className="flex flex-col h-full bg-gray-900/50">
+            {/* Barra de ferramentas do Editor */}
+            <div className="flex items-center justify-between px-4 py-2 bg-gray-800/30 border-b border-gray-700/50">
+              <div className="flex items-center space-x-2">
+                {selectedFile && (
+                  <span className="text-sm text-gray-300 font-medium">
+                    {selectedFile.path}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleEditorSearch}
+                  className="p-2 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
+                  title="Buscar (Ctrl+F)"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="m21 21-4.35-4.35"/>
+                  </svg>
+                </button>
+                <button
+                  onClick={handleEditorSave}
+                  className="p-2 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
+                  title="Salvar (Ctrl+S)"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                    <polyline points="17,21 17,13 7,13 7,21"/>
+                    <polyline points="7,3 7,8 15,8"/>
+                  </svg>
+                </button>
+                <button
+                  onClick={handleEditorFormat}
+                  className="p-2 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
+                  title="Formatar Código"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="16,18 22,12 16,6"/>
+                    <polyline points="8,6 2,12 8,18"/>
+                  </svg>
+                </button>
+                <button
+                  onClick={handleEditorGoToLine}
+                  className="p-2 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
+                  title="Ir para Linha (Ctrl+G)"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                    <circle cx="12" cy="10" r="3"/>
+                  </svg>
+                </button>
+                <button
+                  onClick={handleEditorReplace}
+                  className="p-2 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
+                  title="Substituir (Ctrl+H)"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14,2 14,8 20,8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10,9 9,9 8,9"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Monaco Editor */}
+            <div className="flex-1 overflow-hidden">
+              {selectedFile ? (
+                <div className="h-full bg-gray-900/50 flex flex-col">
+                  <div className="flex-1">
+                    <React.Suspense fallback={<div className="text-gray-400 p-4">Carregando editor...</div>}>
+                    <MonacoEditor
+                      height="100%"
+                      language={getMonacoLanguage(selectedFile.path)}
+                      value={selectedFile.content}
+                      onChange={(value) => updateFileContent(value || '')}
+                      theme="vs-dark"
+                      options={{
+                        minimap: { enabled: true },
+                        fontSize: 14,
+                        lineNumbers: 'on',
+                        wordWrap: 'on',
+                        automaticLayout: true,
+                        scrollBeyondLastLine: false,
+                        renderWhitespace: 'selection',
+                        tabSize: 2,
+                        insertSpaces: true,
+                        formatOnPaste: true,
+                        formatOnType: true,
+                        suggestOnTriggerCharacters: true,
+                        acceptSuggestionOnEnter: 'on',
+                        quickSuggestions: true,
+                        parameterHints: { enabled: true },
+                        hover: { enabled: true },
+                        contextmenu: true,
+                        mouseWheelZoom: true,
+                        cursorBlinking: 'blink',
+                        cursorSmoothCaretAnimation: 'on',
+                        smoothScrolling: true,
+                        folding: true,
+                        foldingHighlight: true,
+                        showFoldingControls: 'always',
+                        bracketPairColorization: { enabled: true },
+                        guides: {
+                          bracketPairs: true,
+                          indentation: true
+                        }
+                      }}
+                    />
+                    </React.Suspense>
+                  </div>
+                </div>
+              ) : (
+                <div className="h-full flex items-center justify-center text-gray-400">
+                  <div className="text-center">
+                    <Code2 size={48} className="mx-auto mb-4 opacity-50" />
+                    <p>Selecione um arquivo para editar</p>
+                    <p className="text-sm mt-2">Escolha um arquivo na aba Arquivos para começar a editar</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+
+      case 'agentes':
+        return renderTabContent('agentes');
+
+      case 'documentacao':
+        return renderTabContent('documentacao');
+
+      case 'dados':
+        return renderTabContent('dados');
+
+      case 'memoria':
+        return renderTabContent('memoria');
+
+      case 'integracoes':
+        return renderTabContent('integracoes');
+
+      case 'notas':
+        return renderTabContent('notas');
+
       default:
         return null;
     }
@@ -2177,13 +3275,21 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
       <div className="flex h-full">
         {/* Painel esquerdo */}
         <div 
-          className="bg-gray-800/50 border-r border-gray-700/50 flex flex-col overflow-hidden pb-2"
-          style={{ width: `${leftPanelWidth}%` }}
+          className="bg-gray-800/50 border-r border-gray-700/50 flex flex-col overflow-hidden pb-2 transition-all duration-300 ease-in-out"
+          style={{ width: `${leftPanelWidth}%`, minWidth: '320px' }}
         >
           {/* Abas horizontais */}
-          <div className="flex border-b border-gray-700/50 overflow-x-auto custom-scrollbar">
-            {tabOrder.map((id) => {
+          <div 
+            className={`flex border-b border-gray-700/50 overflow-x-auto custom-scrollbar transition-all duration-200 ${
+              isDragOverMainMenu ? 'bg-green-500/20 border-green-500/50' : ''
+            }`}
+            onDragOver={handleMainMenuDragOver}
+            onDragLeave={handleMainMenuDragLeave}
+            onDrop={handleMainMenuDrop}
+          >
+            {[...new Set([...tabOrder.filter(id => !transferredToCanvas.includes(id as CanvasTabType)), ...transferredToMain])].map((id) => {
               const tabConfig = {
+                // Abas originais do menu principal
                 'copilot': { icon: Bot, label: 'Copiloto IA' },
                 'files': { icon: FolderOpen, label: 'Arquivos' },
                 'editor': { icon: Code2, label: 'Editor' },
@@ -2192,26 +3298,44 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
                 'dados': { icon: Database, label: 'Dados' },
                 'memoria': { icon: Brain, label: 'Memória' },
                 'integracoes': { icon: Plug, label: 'Integrações' },
-                'notas': { icon: StickyNote, label: 'Notas' }
+                'notas': { icon: StickyNote, label: 'Notas' },
+                // Abas transferidas do Canvas
+                'preview': { icon: Monitor, label: 'Preview' },
+                'canvas': { icon: Square, label: 'Canvas' },
+                'tarefas': { icon: CheckSquare, label: 'Tarefas' },
+                'dashboard': { icon: BarChart3, label: 'Dashboard' },
+                'roadmap': { icon: Map, label: 'Roadmap' },
+                'diagramas': { icon: GitBranch, label: 'Diagramas' }
               }[id];
               
               if (!tabConfig) return null;
               
               const { icon: Icon, label } = tabConfig;
-              const isActive = activeTabs.has(id);
+              
+              // Copiloto é sempre ativo, outras abas são ativas apenas se forem a currentNonCopilotTab
+              const isActive = id === 'copilot' || id === currentNonCopilotTab;
+              const isCopilot = id === 'copilot';
               
               return (
               <div key={id} className="relative flex flex-shrink-0">
                 <button
-                  draggable
-                  onDragStart={(e) => handleTabDragStart(e, id)}
-                  onDragOver={handleTabDragOver}
-                  onDrop={(e) => handleTabDrop(e, id)}
+                  draggable={!isCopilot} // Copiloto não pode ser arrastado
+                  onDragStart={!isCopilot ? (e) => {
+                    // Usar o novo handler para drag entre menus
+                    handleCrossMenuDragStart(e, id, 'main');
+                    // Manter compatibilidade com drag dentro do mesmo menu
+                    handleTabDragStart(e, id);
+                  } : undefined}
+                  onDragOver={!isCopilot ? handleTabDragOver : undefined}
+                  onDrop={!isCopilot ? (e) => handleTabDrop(e, id) : undefined}
                   onClick={() => toggleTab(id)}
                   className={`
-                    flex items-center px-3 py-3 text-sm font-medium transition-all duration-200 border-b-2 flex-1 min-w-0 cursor-move
+                    flex items-center px-3 py-3 text-sm font-medium transition-all duration-200 border-b-2 flex-1 min-w-0
+                    ${isCopilot ? 'cursor-default' : 'cursor-move'}
                     ${isActive
-                      ? 'border-blue-500 bg-blue-500/10 text-blue-400'
+                      ? isCopilot 
+                        ? 'border-blue-500 bg-blue-500/10 text-blue-400' 
+                        : 'border-green-500 bg-green-500/10 text-green-400'
                       : 'border-transparent bg-gray-700/30 text-gray-300 hover:text-white hover:bg-gray-700/50'
                     }
                   `}
@@ -2219,19 +3343,13 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
                   <Icon size={14} className={isActive ? "mr-2 flex-shrink-0" : "flex-shrink-0"} />
                   {isActive && <span className="truncate">{label}</span>}
                 </button>
-                {isActive && activeTabs.size > 1 && (
+                {isActive && !isCopilot && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       toggleTab(id);
                     }}
-                    className={`
-                      px-2 py-3 text-sm font-medium transition-all duration-200 border-b-2 hover:bg-gray-600/50 flex-shrink-0
-                      ${isActive
-                        ? 'border-blue-500 bg-blue-500/10 text-blue-400'
-                        : 'border-transparent bg-gray-700/30 text-gray-300 hover:text-white hover:bg-gray-700/50'
-                      }
-                    `}
+                    className="px-2 py-3 text-sm font-medium transition-all duration-200 border-b-2 border-green-500 bg-green-500/10 text-green-400 hover:bg-gray-600/50 flex-shrink-0"
                   >
                     <X size={12} />
                   </button>
@@ -2248,37 +3366,53 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
             </button>
           </div>
 
-          {/* Conteúdo das abas - dividido quando múltiplas abas ativas */}
+          {/* Conteúdo das abas - layout ajustado para Copiloto fixo À ESQUERDA */}
           <div className="flex-1 overflow-hidden">
-            {activeTabs.size === 1 ? (
-              <div className="h-full">
-                {renderTabContent(Array.from(activeTabs)[0])}
+            {currentNonCopilotTab ? (
+              // Layout de duas colunas: Copiloto à esquerda, aba não-copiloto à direita
+              <div className="h-full flex transition-all duration-300 ease-in-out">
+                {/* Copiloto à esquerda - FIXO */}
+                <div className="flex-1 border-gray-700/50 transition-all duration-300 ease-in-out" style={{ minWidth: '320px' }}>
+                  <div className="h-8 bg-gray-800/30 border-b border-gray-700/50 flex items-center px-3">
+                    <span className="text-xs text-blue-400 truncate">
+                      Copiloto IA
+                    </span>
+                  </div>
+                  <div className="h-[calc(100%-2rem)] overflow-hidden">
+                    {renderTabContent('copilot')}
+                  </div>
+                </div>
+                
+                {/* Aba não-copiloto à direita */}
+                <div className="flex-1 border-l border-gray-700/50 transition-all duration-300 ease-in-out">
+                  <div className="h-8 bg-gray-800/30 border-b border-gray-700/50 flex items-center px-3">
+                    <span className="text-xs text-gray-400 truncate">
+                      {currentNonCopilotTab === 'files' ? 'Arquivos' :
+                       currentNonCopilotTab === 'editor' ? 'Editor' :
+                       currentNonCopilotTab === 'agentes' ? 'Agentes' :
+                       currentNonCopilotTab === 'documentacao' ? 'Documentação' :
+                       currentNonCopilotTab === 'dados' ? 'Dados' :
+                       currentNonCopilotTab === 'memoria' ? 'Memória' :
+                       currentNonCopilotTab === 'integracoes' ? 'Integrações' :
+                       currentNonCopilotTab === 'notas' ? 'Notas' : currentNonCopilotTab}
+                    </span>
+                  </div>
+                  <div className="h-[calc(100%-2rem)] overflow-hidden">
+                    {renderTabContent(currentNonCopilotTab)}
+                  </div>
+                </div>
               </div>
             ) : (
-              <div className="h-full flex">
-                {Array.from(activeTabs).map((tabType, index) => (
-                  <div 
-                    key={tabType} 
-                    className={`flex-1 border-gray-700/50 ${index > 0 ? 'border-l' : ''}`}
-                  >
-                    <div className="h-8 bg-gray-800/30 border-b border-gray-700/50 flex items-center px-3">
-                      <span className="text-xs text-gray-400 truncate">
-                        {tabType === 'copiloto' ? 'Copiloto IA' :
-                         tabType === 'files' ? 'Arquivos' :
-                         tabType === 'editor' ? 'Editor' :
-                         tabType === 'agentes' ? 'Agentes' :
-                         tabType === 'documentacao' ? 'Documentação' :
-                         tabType === 'dados' ? 'Dados' :
-                         tabType === 'memoria' ? 'Memória' :
-                         tabType === 'integracoes' ? 'Integrações' :
-                         tabType === 'notas' ? 'Notas' : tabType}
-                      </span>
-                    </div>
-                    <div className="h-[calc(100%-2rem)] overflow-hidden">
-                      {renderTabContent(tabType)}
-                    </div>
-                  </div>
-                ))}
+              // Apenas Copiloto quando nenhuma aba não-copiloto está ativa
+              <div className="h-full transition-all duration-300 ease-in-out">
+                <div className="h-8 bg-gray-800/30 border-b border-gray-700/50 flex items-center px-3">
+                  <span className="text-xs text-blue-400 truncate">
+                    Copiloto IA
+                  </span>
+                </div>
+                <div className="h-[calc(100%-2rem)] overflow-hidden">
+                  {renderTabContent('copilot')}
+                </div>
               </div>
             )}
           </div>
@@ -2291,21 +3425,43 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
         />
 
         {/* Painel direito */}
-        <div className="flex-1 flex flex-col overflow-hidden pb-2">
+        <div className="flex-1 flex flex-col overflow-hidden pb-2 transition-all duration-300 ease-in-out">
           {/* Seção Canvas */}
           <div 
             className="bg-gray-800/50 flex flex-col overflow-hidden flex-1"
           >
             {/* Abas do Canvas */}
-            <div className="flex border-b border-gray-700/50 overflow-x-auto custom-scrollbar">
-              {canvasTabOrder.map((id) => {
+            <div 
+              className={`flex border-b border-gray-700/50 overflow-x-auto custom-scrollbar transition-all duration-200 ${
+                isDragOverCanvasMenu ? 'bg-purple-500/20 border-purple-500/50' : ''
+              }`}
+              onDragOver={handleCanvasMenuDragOver}
+              onDragLeave={handleCanvasMenuDragLeave}
+              onDrop={handleCanvasMenuDrop}
+            >
+              {[...new Set([
+                // Abas originais do Canvas que não foram transferidas para o menu principal
+                ...canvasTabOrder.filter(id => !transferredToMain.includes(id)), 
+                // Abas transferidas do menu principal que estão ativas no Canvas
+                ...transferredToCanvas.filter(id => activeCanvasTabs.has(id as CanvasTabType))
+              ])].map((id) => {
                 const tabConfig = {
+                  // Abas originais do Canvas
                   'preview': { icon: Monitor, label: 'Preview' },
                   'canvas': { icon: Square, label: 'Canvas' },
                   'dashboard': { icon: BarChart3, label: 'Dashboard' },
                   'diagramas': { icon: GitBranch, label: 'Diagramas' },
                   'tarefas': { icon: CheckSquare, label: 'Tarefas' },
-                  'roadmap': { icon: Map, label: 'Roadmap' }
+                  'roadmap': { icon: Map, label: 'Roadmap' },
+                  // Abas transferidas do menu principal
+                  'files': { icon: FolderOpen, label: 'Arquivos' },
+                  'editor': { icon: Code2, label: 'Editor' },
+                  'agentes': { icon: Bot, label: 'Agentes' },
+                  'documentacao': { icon: FileText, label: 'Documentação' },
+                  'dados': { icon: Database, label: 'Dados' },
+                  'memoria': { icon: Brain, label: 'Memória' },
+                  'integracoes': { icon: Plug, label: 'Integrações' },
+                  'notas': { icon: StickyNote, label: 'Notas' }
                 }[id];
                 
                 if (!tabConfig) return null;
@@ -2317,7 +3473,12 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
                 <div key={id} className="relative flex flex-shrink-0">
                   <button
                     draggable
-                    onDragStart={(e) => handleCanvasTabDragStart(e, id)}
+                    onDragStart={(e) => {
+                      // Usar o novo handler para drag entre menus
+                      handleCrossMenuDragStart(e, id, 'canvas');
+                      // Manter compatibilidade com drag dentro do mesmo menu
+                      handleCanvasTabDragStart(e, id);
+                    }}
                     onDragOver={handleCanvasTabDragOver}
                     onDrop={(e) => handleCanvasTabDrop(e, id)}
                     onClick={() => toggleCanvasTab(id)}
@@ -2332,11 +3493,23 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
                     <Icon size={14} className={isActive ? "mr-2 flex-shrink-0" : "flex-shrink-0"} />
                     {isActive && <span className="truncate">{label}</span>}
                   </button>
-                  {isActive && activeCanvasTabs.size > 1 && (
+                  {isActive && (
+                    // Abas transferidas sempre têm botão de fechar
+                    transferredToCanvas.includes(id) || 
+                    // Abas originais só têm botão quando há múltiplas abas
+                    (activeCanvasTabs.size > 1 && !transferredToCanvas.includes(id))
+                  ) && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        toggleCanvasTab(id);
+                        if (transferredToCanvas.includes(id)) {
+                          // Para abas transferidas, usar a nova função que retorna INATIVA
+                          handleCloseTransferredTab(id);
+                        } else {
+                          // Para abas originais, apenas desativar
+                          console.log('❌ [IDE_PAGE] Desativando aba original do Canvas:', id);
+                          toggleCanvasTab(id);
+                        }
                       }}
                       className={`
                         px-2 py-3 text-sm font-medium transition-all duration-200 border-b-2 hover:bg-gray-600/50 flex-shrink-0
@@ -2345,6 +3518,7 @@ Para dúvidas ou suporte, consulte a documentação do Canvas App Creator.
                           : 'border-transparent bg-gray-700/30 text-gray-300 hover:text-white hover:bg-gray-700/50'
                         }
                       `}
+                      title={transferredToCanvas.includes(id) ? 'Retornar inativa para menu principal' : 'Fechar aba'}
                     >
                       <X size={12} />
                     </button>
