@@ -2,6 +2,8 @@
 
 Atualizado em: 18/01/2026
 
+Repositório GitHub: https://github.com/xploryngDAO/canvas-builder
+
 Este README inclui diagramas e detalhes completos dos fluxos de navegação, páginas, etapas do wizard, abas da IDE, recursos, funcionalidades e configuração.
 
 ## Índice
